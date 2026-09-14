@@ -1,0 +1,1680 @@
+openapi: 3.0.3
+info:
+  title: Revaloop
+  version: 0.1.0
+  description: >-
+    Disposition and residual-value system for returned durable goods. Each returned
+    unit is graded, cleared for erasure and safety, priced against a residual-value
+    forecast, and committed to one next cycle - resale, repair, refurbishment, parts
+    harvesting for remanufacture, or material recovery - with a warranty reserve and
+    extended-producer-responsibility consequences attached to the decision.
+  x-product-slug: ai-forgood-revaloop
+  x-source: ai-in-for-good/Artificial-intelligence-and-the-circular-economy/
+servers:
+  - url: https://api.example.com
+tags:
+  - name: Units
+    description: Returned unit registry, product models, and material passports
+  - name: Assessment
+    description: Grading, grade challenges, erasure and safety clearances
+  - name: Disposition
+    description: Next-cycle decisions, overrides, and rejected alternatives
+  - name: Logistics
+    description: Reverse-logistics lanes and dispatch
+  - name: Remanufacturing
+    description: Job release, harvested parts, yield and warranty reserve
+  - name: Valuation
+    description: Residual-value forecasts and take-back offers
+  - name: Compliance
+    description: Verified material flows, recycled-content claims, EPR declarations
+  - name: Design
+    description: Design-for-circularity findings issued to product programmes
+paths:
+  /v1/units:
+    get:
+      operationId: listReturnedUnits
+      tags: [Units]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: modelId
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [received, assessed, cleared, blocked, disposed, dispatched, closed]
+        - name: intakeRoute
+          in: query
+          schema:
+            $ref: "#/components/schemas/IntakeRoute"
+      responses:
+        "200":
+          description: Returned units page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEnvelopeReturnedUnit"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: registerReturnedUnit
+      tags: [Units]
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReturnedUnitCreate"
+      responses:
+        "201":
+          description: Unit registered against its product model and passport
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeReturnedUnit"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /v1/units/{unitId}:
+    parameters:
+      - $ref: "#/components/parameters/UnitId"
+    get:
+      operationId: getReturnedUnit
+      tags: [Units]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Returned unit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeReturnedUnit"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/product-models/{modelId}/material-passport:
+    parameters:
+      - $ref: "#/components/parameters/ModelId"
+    get:
+      operationId: getMaterialPassport
+      tags: [Units]
+      description: >-
+        Returns only the passport fields the calling party is entitled to see under a
+        recorded data-sharing agreement. Supplier-confidential composition fields are
+        omitted rather than masked.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Material passport, field-filtered by agreement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeMaterialPassport"
+        "403":
+          description: No data-sharing agreement covers this passport
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/units/{unitId}/assessments:
+    parameters:
+      - $ref: "#/components/parameters/UnitId"
+    post:
+      operationId: submitGradingAssessment
+      tags: [Assessment]
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GradingAssessmentCreate"
+      responses:
+        "201":
+          description: Assessment recorded with reproducibility against tolerance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeGradingAssessment"
+    get:
+      operationId: listGradingAssessments
+      tags: [Assessment]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Assessments recorded for this unit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEnvelopeGradingAssessment"
+  /v1/units/{unitId}/assessments/{assessmentId}/challenge:
+    parameters:
+      - $ref: "#/components/parameters/UnitId"
+      - $ref: "#/components/parameters/AssessmentId"
+    post:
+      operationId: challengeGrade
+      tags: [Assessment]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [claimedGrade, rationale]
+              properties:
+                claimedGrade:
+                  $ref: "#/components/schemas/ConditionGrade"
+                rationale:
+                  type: string
+                evidenceRefs:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "202":
+          description: Challenge opened for adjudication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeGradingAssessment"
+  /v1/units/{unitId}/clearances:
+    parameters:
+      - $ref: "#/components/parameters/UnitId"
+    post:
+      operationId: recordClearance
+      tags: [Assessment]
+      description: >-
+        Records erasure, battery-safety or restricted-substance clearance. A failed
+        clearance closes the reuse routes for this unit.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClearanceRecordCreate"
+      responses:
+        "201":
+          description: Clearance recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeClearanceRecord"
+        "409":
+          description: Conflicting clearance already recorded for this unit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/units/{unitId}/disposition:
+    parameters:
+      - $ref: "#/components/parameters/UnitId"
+    post:
+      operationId: decideDisposition
+      tags: [Disposition]
+      description: >-
+        Selects the next cycle with the highest expected net recovery under capacity,
+        legal-movement and reserve constraints, and records the alternatives rejected.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                targetMarkets:
+                  type: array
+                  items:
+                    type: string
+                capacityProfileId:
+                  type: string
+      responses:
+        "201":
+          description: Disposition committed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeDispositionDecision"
+        "409":
+          description: Unit is blocked by a failed clearance and cannot be dispositioned for reuse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    get:
+      operationId: getDisposition
+      tags: [Disposition]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Committed disposition with model version and price inputs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeDispositionDecision"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/units/{unitId}/disposition/override:
+    parameters:
+      - $ref: "#/components/parameters/UnitId"
+    post:
+      operationId: overrideDisposition
+      tags: [Disposition]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nextCycle, reason, ownerId]
+              properties:
+                nextCycle:
+                  $ref: "#/components/schemas/NextCycle"
+                reason:
+                  type: string
+                ownerId:
+                  type: string
+                acceptedRecoveryDelta:
+                  $ref: "#/components/schemas/Money"
+      responses:
+        "200":
+          description: Override recorded against a named owner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeDispositionDecision"
+  /v1/logistics/lanes:
+    get:
+      operationId: listReverseLogisticsLanes
+      tags: [Logistics]
+      description: >-
+        Lanes that would breach waste-shipment, battery-transport or export rules are
+        excluded from the response rather than returned with a warning.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: originSiteId
+          in: query
+          schema:
+            type: string
+        - name: nextCycle
+          in: query
+          schema:
+            $ref: "#/components/schemas/NextCycle"
+      responses:
+        "200":
+          description: Eligible lanes ranked on landed cost
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEnvelopeReverseLogisticsLane"
+  /v1/logistics/dispatches:
+    post:
+      operationId: dispatchUnits
+      tags: [Logistics]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [laneId, unitIds]
+              properties:
+                laneId:
+                  type: string
+                unitIds:
+                  type: array
+                  items:
+                    type: string
+                consolidationRef:
+                  type: string
+      responses:
+        "202":
+          description: Dispatch accepted on an approved lane
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeReverseLogisticsLane"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+  /v1/remanufacturing/jobs:
+    post:
+      operationId: releaseRemanufacturingJob
+      tags: [Remanufacturing]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RemanufacturingJobCreate"
+      responses:
+        "201":
+          description: Job released with expected yield and reserve
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeRemanufacturingJob"
+    get:
+      operationId: listRemanufacturingJobs
+      tags: [Remanufacturing]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [planned, released, in_progress, closed, abandoned]
+      responses:
+        "200":
+          description: Remanufacturing jobs page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEnvelopeRemanufacturingJob"
+  /v1/remanufacturing/jobs/{jobId}:
+    parameters:
+      - $ref: "#/components/parameters/JobId"
+    get:
+      operationId: getRemanufacturingJob
+      tags: [Remanufacturing]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Job with realised yield against prediction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeRemanufacturingJob"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/remanufacturing/parts:
+    post:
+      operationId: recordHarvestedPart
+      tags: [Remanufacturing]
+      description: >-
+        Records a harvested part with predicted failure risk and warranty reserve. Parts
+        whose restricted-substance or safety status cannot be confirmed are returned in
+        blocked state and may not re-enter a build.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HarvestedPartCreate"
+      responses:
+        "201":
+          description: Harvested part recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeHarvestedPart"
+  /v1/remanufacturing/parts/{partId}/yield:
+    parameters:
+      - $ref: "#/components/parameters/PartId"
+    get:
+      operationId: getPartYieldRecord
+      tags: [Remanufacturing]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Predicted and realised yield for this part type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopePartYieldRecord"
+  /v1/valuation/residual-forecasts:
+    get:
+      operationId: listResidualValueForecasts
+      tags: [Valuation]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: modelId
+          in: query
+          schema:
+            type: string
+        - name: grade
+          in: query
+          schema:
+            $ref: "#/components/schemas/ConditionGrade"
+        - name: market
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Residual-value forecasts with confidence bands
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEnvelopeResidualValueForecast"
+  /v1/valuation/take-back-offers:
+    post:
+      operationId: createTakeBackOffer
+      tags: [Valuation]
+      description: >-
+        Rejects an offer whose expected loss exceeds the approved risk budget unless an
+        override owner is supplied.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TakeBackOfferCreate"
+      responses:
+        "201":
+          description: Offer approved and publishable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeTakeBackOffer"
+        "422":
+          description: Offer breaches the approved risk budget
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/compliance/material-flows:
+    get:
+      operationId: listRecoveredMaterialFlows
+      tags: [Compliance]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: verificationStatus
+          in: query
+          schema:
+            type: string
+            enum: [unverified, verified, disputed]
+      responses:
+        "200":
+          description: Recovered material flows page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEnvelopeRecoveredMaterialFlow"
+  /v1/compliance/recycled-content-claims:
+    post:
+      operationId: submitRecycledContentClaim
+      tags: [Compliance]
+      description: >-
+        A claim that cannot be traced to verified flows is rejected and never published.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecycledContentClaimCreate"
+      responses:
+        "201":
+          description: Claim substantiated and cleared for publication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeRecycledContentClaim"
+        "409":
+          description: Claim blocked - underlying flows are unverified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/compliance/epr-declarations:
+    post:
+      operationId: generateEprDeclaration
+      tags: [Compliance]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scheme, period]
+              properties:
+                scheme:
+                  type: string
+                period:
+                  type: string
+                  example: 2026-Q3
+                modelIds:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "201":
+          description: Declaration generated from operational records
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeEprDeclaration"
+    get:
+      operationId: listEprDeclarations
+      tags: [Compliance]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Declarations page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEnvelopeEprDeclaration"
+  /v1/compliance/epr-declarations/{declarationId}:
+    parameters:
+      - $ref: "#/components/parameters/DeclarationId"
+    get:
+      operationId: getEprDeclaration
+      tags: [Compliance]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Declaration with eco-modulation drivers per model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeEprDeclaration"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/design/findings:
+    get:
+      operationId: listDesignFindings
+      tags: [Design]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: modelId
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, accepted, rejected, implemented]
+      responses:
+        "200":
+          description: Ranked design findings with attributed recovery loss
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEnvelopeDesignFinding"
+  /v1/design/findings/{findingId}/decision:
+    parameters:
+      - $ref: "#/components/parameters/FindingId"
+    post:
+      operationId: recordDesignFindingDecision
+      tags: [Design]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [outcome, programmeId]
+              properties:
+                outcome:
+                  type: string
+                  enum: [accepted, rejected, deferred]
+                programmeId:
+                  type: string
+                rationale:
+                  type: string
+      responses:
+        "200":
+          description: Finding decision recorded against a product programme
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeDesignFinding"
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    UnitId:
+      name: unitId
+      in: path
+      required: true
+      schema:
+        type: string
+    ModelId:
+      name: modelId
+      in: path
+      required: true
+      schema:
+        type: string
+    AssessmentId:
+      name: assessmentId
+      in: path
+      required: true
+      schema:
+        type: string
+    JobId:
+      name: jobId
+      in: path
+      required: true
+      schema:
+        type: string
+    PartId:
+      name: partId
+      in: path
+      required: true
+      schema:
+        type: string
+    DeclarationId:
+      name: declarationId
+      in: path
+      required: true
+      schema:
+        type: string
+    FindingId:
+      name: findingId
+      in: path
+      required: true
+      schema:
+        type: string
+  responses:
+    Unauthorized:
+      description: Missing or invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    UnprocessableEntity:
+      description: Validation failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+  schemas:
+    ResponseMeta:
+      type: object
+      required: [requestId, timestamp]
+      properties:
+        requestId:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+    Money:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount:
+          type: number
+          format: double
+        currency:
+          type: string
+          example: EUR
+    ConditionGrade:
+      type: string
+      enum: [A, B, C, D, salvage]
+    NextCycle:
+      type: string
+      enum: [resale, repair_resale, refurbishment, parts_harvest, material_recovery, disposal]
+    IntakeRoute:
+      type: string
+      enum: [trade_in, warranty_exchange, lease_return, service_return, collection_point, bulk_takeback]
+    ProductModel:
+      type: object
+      required: [id, name, category]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        category:
+          type: string
+          enum: [smartphone, laptop, television, smart_home, accessory]
+        launchYear:
+          type: integer
+        disassemblyMinutes:
+          type: number
+          format: float
+        upgradableSoftwareUntil:
+          type: string
+          format: date
+        declaredRecycledContentPct:
+          type: number
+          format: float
+    BillOfMaterials:
+      type: object
+      required: [modelId, revision]
+      properties:
+        modelId:
+          type: string
+        revision:
+          type: string
+        components:
+          type: array
+          items:
+            type: object
+            properties:
+              partNumber:
+                type: string
+              description:
+                type: string
+              harvestable:
+                type: boolean
+              fastenerType:
+                type: string
+              massGrams:
+                type: number
+                format: float
+    MaterialPassport:
+      type: object
+      required: [modelId, disclosedFields]
+      properties:
+        modelId:
+          type: string
+        revision:
+          type: string
+        disclosedFields:
+          type: array
+          items:
+            type: string
+        materials:
+          type: array
+          items:
+            type: object
+            properties:
+              material:
+                type: string
+              massGrams:
+                type: number
+                format: float
+              recycledContentPct:
+                type: number
+                format: float
+              restrictedSubstance:
+                type: boolean
+        agreementId:
+          type: string
+          description: Data-sharing agreement under which these fields were released
+    ReturnedUnit:
+      type: object
+      required: [id, modelId, status, intakeRoute]
+      properties:
+        id:
+          type: string
+        modelId:
+          type: string
+        serialHash:
+          type: string
+          description: Pseudonymous serial reference, no personal data
+        status:
+          type: string
+          enum: [received, assessed, cleared, blocked, disposed, dispatched, closed]
+        intakeRoute:
+          $ref: "#/components/schemas/IntakeRoute"
+        receivedAt:
+          type: string
+          format: date-time
+        siteId:
+          type: string
+        currentGrade:
+          $ref: "#/components/schemas/ConditionGrade"
+        blockedReason:
+          type: string
+    ReturnedUnitCreate:
+      type: object
+      required: [modelId, intakeRoute, siteId]
+      properties:
+        modelId:
+          type: string
+        serialHash:
+          type: string
+        intakeRoute:
+          $ref: "#/components/schemas/IntakeRoute"
+        siteId:
+          type: string
+        contractRef:
+          type: string
+          description: Lease, device-as-a-service or warranty contract reference
+    GradingAssessment:
+      type: object
+      required: [id, unitId, grade, method]
+      properties:
+        id:
+          type: string
+        unitId:
+          type: string
+        grade:
+          $ref: "#/components/schemas/ConditionGrade"
+        method:
+          type: string
+          enum: [vision_cell, technician, diagnostic_only, partner_declared]
+        cosmeticFindings:
+          type: array
+          items:
+            type: object
+            properties:
+              finding:
+                type: string
+              classification:
+                type: string
+                enum: [model_feature, anomaly]
+              severity:
+                type: string
+                enum: [minor, moderate, severe]
+        functionalTests:
+          type: array
+          items:
+            type: object
+            properties:
+              test:
+                type: string
+              result:
+                type: string
+                enum: [pass, fail, not_run]
+        reproducibilityDelta:
+          type: number
+          format: float
+          description: Deviation from the prior assessment, against published tolerance
+        challengeStatus:
+          type: string
+          enum: [none, open, upheld, rejected]
+        modelVersion:
+          type: string
+    GradingAssessmentCreate:
+      type: object
+      required: [method]
+      properties:
+        method:
+          type: string
+          enum: [vision_cell, technician, diagnostic_only, partner_declared]
+        imageRefs:
+          type: array
+          items:
+            type: string
+        diagnosticPayload:
+          type: object
+          additionalProperties:
+            type: string
+        technicianId:
+          type: string
+    ClearanceRecord:
+      type: object
+      required: [id, unitId, clearanceType, outcome]
+      properties:
+        id:
+          type: string
+        unitId:
+          type: string
+        clearanceType:
+          type: string
+          enum: [data_erasure, battery_safety, restricted_substance, market_eligibility]
+        outcome:
+          type: string
+          enum: [passed, failed, inconclusive]
+        attestationRef:
+          type: string
+          description: Evidence reference retained without personal content
+        performedBy:
+          type: string
+        performedAt:
+          type: string
+          format: date-time
+    ClearanceRecordCreate:
+      type: object
+      required: [clearanceType, outcome]
+      properties:
+        clearanceType:
+          type: string
+          enum: [data_erasure, battery_safety, restricted_substance, market_eligibility]
+        outcome:
+          type: string
+          enum: [passed, failed, inconclusive]
+        attestationRef:
+          type: string
+        performedBy:
+          type: string
+    ResidualValueForecast:
+      type: object
+      required: [modelId, grade, market, forecastValue]
+      properties:
+        modelId:
+          type: string
+        grade:
+          $ref: "#/components/schemas/ConditionGrade"
+        market:
+          type: string
+        forecastValue:
+          $ref: "#/components/schemas/Money"
+        confidenceLow:
+          $ref: "#/components/schemas/Money"
+        confidenceHigh:
+          $ref: "#/components/schemas/Money"
+        horizonDays:
+          type: integer
+        priceSources:
+          type: array
+          items:
+            type: string
+        modelVersion:
+          type: string
+    DispositionDecision:
+      type: object
+      required: [id, unitId, nextCycle, expectedNetRecovery]
+      properties:
+        id:
+          type: string
+        unitId:
+          type: string
+        nextCycle:
+          $ref: "#/components/schemas/NextCycle"
+        expectedNetRecovery:
+          $ref: "#/components/schemas/Money"
+        expectedGrossValue:
+          $ref: "#/components/schemas/Money"
+        expectedProcessingCost:
+          $ref: "#/components/schemas/Money"
+        expectedLogisticsCost:
+          $ref: "#/components/schemas/Money"
+        warrantyReserve:
+          $ref: "#/components/schemas/WarrantyReserve"
+        targetMarket:
+          type: string
+        rejectedAlternatives:
+          type: array
+          items:
+            type: object
+            properties:
+              nextCycle:
+                $ref: "#/components/schemas/NextCycle"
+              expectedNetRecovery:
+                $ref: "#/components/schemas/Money"
+              rejectionReason:
+                type: string
+        overriddenBy:
+          type: string
+        overrideReason:
+          type: string
+        modelVersion:
+          type: string
+        decidedAt:
+          type: string
+          format: date-time
+    ReverseLogisticsLane:
+      type: object
+      required: [id, originSiteId, destinationFacilityId, landedCostPerUnit]
+      properties:
+        id:
+          type: string
+        originSiteId:
+          type: string
+        destinationFacilityId:
+          type: string
+        nextCycle:
+          $ref: "#/components/schemas/NextCycle"
+        landedCostPerUnit:
+          $ref: "#/components/schemas/Money"
+        transitDays:
+          type: integer
+        movementPermitRef:
+          type: string
+        batteryTransportClass:
+          type: string
+        eligibility:
+          type: string
+          enum: [eligible, ineligible]
+        ineligibilityReason:
+          type: string
+    RemanufacturingJob:
+      type: object
+      required: [id, facilityId, status, unitIds]
+      properties:
+        id:
+          type: string
+        facilityId:
+          type: string
+        status:
+          type: string
+          enum: [planned, released, in_progress, closed, abandoned]
+        unitIds:
+          type: array
+          items:
+            type: string
+        targetParts:
+          type: array
+          items:
+            type: string
+        expectedYieldPct:
+          type: number
+          format: float
+        realisedYieldPct:
+          type: number
+          format: float
+        reserveHeld:
+          $ref: "#/components/schemas/Money"
+        equipmentProfileId:
+          type: string
+          description: Sorting or disassembly settings profile applied to this batch
+    RemanufacturingJobCreate:
+      type: object
+      required: [facilityId, unitIds]
+      properties:
+        facilityId:
+          type: string
+        unitIds:
+          type: array
+          items:
+            type: string
+        targetParts:
+          type: array
+          items:
+            type: string
+        equipmentProfileId:
+          type: string
+    HarvestedPart:
+      type: object
+      required: [id, partNumber, sourceUnitId, status]
+      properties:
+        id:
+          type: string
+        partNumber:
+          type: string
+        sourceUnitId:
+          type: string
+        jobId:
+          type: string
+        status:
+          type: string
+          enum: [harvested, tested, cleared, blocked, consumed, scrapped]
+        predictedFailureRisk:
+          type: number
+          format: float
+        warrantyReserve:
+          $ref: "#/components/schemas/WarrantyReserve"
+        blockedReason:
+          type: string
+        substanceStatus:
+          type: string
+          enum: [confirmed_compliant, unconfirmed, restricted]
+    HarvestedPartCreate:
+      type: object
+      required: [partNumber, sourceUnitId]
+      properties:
+        partNumber:
+          type: string
+        sourceUnitId:
+          type: string
+        jobId:
+          type: string
+        testResults:
+          type: object
+          additionalProperties:
+            type: string
+    PartYieldRecord:
+      type: object
+      required: [partNumber]
+      properties:
+        partNumber:
+          type: string
+        predictedYieldPct:
+          type: number
+          format: float
+        realisedYieldPct:
+          type: number
+          format: float
+        sampleSize:
+          type: integer
+        fieldReturnRate:
+          type: number
+          format: float
+        recoveredValuePerPart:
+          $ref: "#/components/schemas/Money"
+    WarrantyReserve:
+      type: object
+      required: [amount]
+      properties:
+        amount:
+          $ref: "#/components/schemas/Money"
+        basis:
+          type: string
+          enum: [model_history, part_history, contractual_minimum, override]
+        coverageMonths:
+          type: integer
+        exceedsRecoveredValue:
+          type: boolean
+    TakeBackOffer:
+      type: object
+      required: [id, modelId, offerPrice, status]
+      properties:
+        id:
+          type: string
+        modelId:
+          type: string
+        grade:
+          $ref: "#/components/schemas/ConditionGrade"
+        channel:
+          type: string
+          enum: [retail, ecommerce, business_fleet, partner]
+        offerPrice:
+          $ref: "#/components/schemas/Money"
+        expectedCollectionCost:
+          $ref: "#/components/schemas/Money"
+        forecastNetRecovery:
+          $ref: "#/components/schemas/Money"
+        expectedMargin:
+          $ref: "#/components/schemas/Money"
+        riskBudgetBreach:
+          type: boolean
+        status:
+          type: string
+          enum: [draft, approved, published, withdrawn, rejected]
+        approvedBy:
+          type: string
+    TakeBackOfferCreate:
+      type: object
+      required: [modelId, channel, offerPrice]
+      properties:
+        modelId:
+          type: string
+        grade:
+          $ref: "#/components/schemas/ConditionGrade"
+        channel:
+          type: string
+          enum: [retail, ecommerce, business_fleet, partner]
+        offerPrice:
+          $ref: "#/components/schemas/Money"
+        overrideOwnerId:
+          type: string
+    RecoveredMaterialFlow:
+      type: object
+      required: [id, material, massKg, verificationStatus]
+      properties:
+        id:
+          type: string
+        material:
+          type: string
+        massKg:
+          type: number
+          format: float
+        sourceUnitIds:
+          type: array
+          items:
+            type: string
+        facilityId:
+          type: string
+        outputFraction:
+          type: string
+          enum: [reuse, component, secondary_raw_material, energy_recovery, residue]
+        verificationStatus:
+          type: string
+          enum: [unverified, verified, disputed]
+        verifiedBy:
+          type: string
+        period:
+          type: string
+    RecycledContentClaim:
+      type: object
+      required: [id, modelId, claimedPct, status]
+      properties:
+        id:
+          type: string
+        modelId:
+          type: string
+        claimedPct:
+          type: number
+          format: float
+        substantiatedPct:
+          type: number
+          format: float
+        flowIds:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [draft, substantiated, blocked, published, withdrawn]
+        blockedReason:
+          type: string
+        publishedChannel:
+          type: string
+    RecycledContentClaimCreate:
+      type: object
+      required: [modelId, claimedPct]
+      properties:
+        modelId:
+          type: string
+        claimedPct:
+          type: number
+          format: float
+        flowIds:
+          type: array
+          items:
+            type: string
+        intendedChannel:
+          type: string
+    EprDeclaration:
+      type: object
+      required: [id, scheme, period, status]
+      properties:
+        id:
+          type: string
+        scheme:
+          type: string
+        period:
+          type: string
+        status:
+          type: string
+          enum: [draft, submitted, accepted, queried]
+        unitsPlacedOnMarket:
+          type: integer
+        unitsCollected:
+          type: integer
+        massRecoveredKg:
+          type: number
+          format: float
+        feeBeforeModulation:
+          $ref: "#/components/schemas/Money"
+        feeAfterModulation:
+          $ref: "#/components/schemas/Money"
+        drivers:
+          type: array
+          items:
+            $ref: "#/components/schemas/EcoModulationDriver"
+        approvedBy:
+          type: string
+    EcoModulationDriver:
+      type: object
+      required: [modelId, driver]
+      properties:
+        modelId:
+          type: string
+        driver:
+          type: string
+          enum: [disassembly_time, recycled_content, repairability, hazardous_substance, software_support_period]
+        measuredValue:
+          type: number
+          format: float
+        feeImpact:
+          $ref: "#/components/schemas/Money"
+        evidenceRef:
+          type: string
+    DesignFinding:
+      type: object
+      required: [id, modelId, attribute, attributedRecoveryLoss]
+      properties:
+        id:
+          type: string
+        modelId:
+          type: string
+        attribute:
+          type: string
+          enum: [disassembly, upgradability, part_commonality, recycled_content, fastener_choice, data_portability]
+        observation:
+          type: string
+        attributedRecoveryLoss:
+          $ref: "#/components/schemas/Money"
+        unitsObserved:
+          type: integer
+        rank:
+          type: integer
+        status:
+          type: string
+          enum: [open, accepted, rejected, implemented]
+        programmeId:
+          type: string
+    PartnerFacility:
+      type: object
+      required: [id, name, capabilities]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        capabilities:
+          type: array
+          items:
+            $ref: "#/components/schemas/NextCycle"
+        jurisdiction:
+          type: string
+        permitRefs:
+          type: array
+          items:
+            type: string
+        agreementId:
+          type: string
+    DataSharingAgreement:
+      type: object
+      required: [id, counterpartyId, disclosedFields]
+      properties:
+        id:
+          type: string
+        counterpartyId:
+          type: string
+        disclosedFields:
+          type: array
+          items:
+            type: string
+        purpose:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+    DataEnvelopeReturnedUnit:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/ReturnedUnit"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeMaterialPassport:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/MaterialPassport"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeGradingAssessment:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/GradingAssessment"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeClearanceRecord:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/ClearanceRecord"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeDispositionDecision:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/DispositionDecision"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeReverseLogisticsLane:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/ReverseLogisticsLane"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeRemanufacturingJob:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/RemanufacturingJob"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeHarvestedPart:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/HarvestedPart"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopePartYieldRecord:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/PartYieldRecord"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeTakeBackOffer:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/TakeBackOffer"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeRecycledContentClaim:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/RecycledContentClaim"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeEprDeclaration:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/EprDeclaration"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataEnvelopeDesignFinding:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/DesignFinding"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ListEnvelopeReturnedUnit:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/ReturnedUnit"
+            nextCursor:
+              type: string
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ListEnvelopeGradingAssessment:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/GradingAssessment"
+            nextCursor:
+              type: string
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ListEnvelopeReverseLogisticsLane:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/ReverseLogisticsLane"
+            nextCursor:
+              type: string
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ListEnvelopeRemanufacturingJob:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/RemanufacturingJob"
+            nextCursor:
+              type: string
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ListEnvelopeResidualValueForecast:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/ResidualValueForecast"
+            nextCursor:
+              type: string
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ListEnvelopeRecoveredMaterialFlow:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/RecoveredMaterialFlow"
+            nextCursor:
+              type: string
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ListEnvelopeEprDeclaration:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/EprDeclaration"
+            nextCursor:
+              type: string
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ListEnvelopeDesignFinding:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/DesignFinding"
+            nextCursor:
+              type: string
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
